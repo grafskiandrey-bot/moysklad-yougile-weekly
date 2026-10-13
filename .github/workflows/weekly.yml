@@ -1,0 +1,65 @@
+name: Weekly MoySklad receipts to YouGile
+
+on:
+  schedule:
+    # 06:00 UTC = 09:00 Moscow.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview without posting to YouGile
+        type: boolean
+        default: true
+  push:
+    paths:
+      - weekly_receipts.py
+      - tests/**
+      - .github/workflows/weekly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-moysklad-yougile
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: |
+          python -m compileall -q weekly_receipts.py
+          python -m unittest discover -s tests -v
+
+  weekly-report:
+    needs: test
+    if: ${{ github.event.repository.private == true && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MOYSKLAD_TOKEN: ${{ secrets.MOYSKLAD_TOKEN }}
+      YOUGILE_TOKEN: ${{ secrets.YOUGILE_TOKEN }}
+      YOUGILE_TASK_UUID: ${{ secrets.YOUGILE_TASK_UUID }}
+      YOUGILE_TASK_CODE: "PRO-10131"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate configuration
+        run: |
+          test -n "$MOYSKLAD_TOKEN" || { echo "::error::Missing MOYSKLAD_TOKEN"; exit 1; }
+          test -n "$YOUGILE_TOKEN" || { echo "::error::Missing YOUGILE_TOKEN"; exit 1; }
+          test -n "$YOUGILE_TASK_UUID" || { echo "::error::Missing YOUGILE_TASK_UUID"; exit 1; }
+      - name: Publish weekly report
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python weekly_receipts.py --dry-run
+          else
+            python weekly_receipts.py
+          fi
