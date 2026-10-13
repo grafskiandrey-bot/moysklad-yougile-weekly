@@ -99,17 +99,14 @@ def planned_arrival(order: dict, week_start: date, week_end: date):
     possible = arrival_candidates(order.get("description") or "", week_start)
     # Самые последние (в тексте) строки заметок выше структурного поля.
     # Если даты по разным партиям, показать все актуальные даты и примечание.
-    in_week = [x for x in possible if x[2] <= week_end and x[3] >= week_start]
-    if in_week:
-        best_priority = max(x[0] for x in in_week)
-        top = [x for x in in_week if x[0] == best_priority]
-        # При нескольких датах из заметок используем последнюю и сохраняем оговорку.
+    if possible:
+        # Даты в описании часто меняют по мере перевозки. Сначала ищем
+        # последнюю актуальную пометку с наивысшим приоритетом — даже если
+        # она перенесла поставку за пределы запрашиваемой недели.
+        best_priority = max(item[0] for item in possible)
+        top = [item for item in possible if item[0] == best_priority]
         winner = top[-1]
         return winner[2], winner[3], "комментарий", winner[4], len(top) > 1
-    # Комментарии могут явно переносить поставку из недели за её пределы.
-    if possible:
-        best = sorted(possible, key=lambda item: (item[0], item[1]))[-1]
-        return best[2], best[3], "комментарий", best[4], False
     raw = (order.get("deliveryPlannedMoment") or "").strip()
     try:
         planned = datetime.strptime(raw[:10], "%Y-%m-%d").date()
